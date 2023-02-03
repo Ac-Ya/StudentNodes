@@ -1,4 +1,4 @@
-# 第十章、创建和管理数据库/表(DDL)
+第十章、创建和管理数据库/表(DDL)
 
 ## 1.基础知识
 
@@ -186,7 +186,7 @@ DESCRUBE 表名;
 
 ### 3.3 表的修改
 
-> **关键字**：ALTER TABLE
+> **关键字**：ALTER TABLE **[ADD MODIFY CHANGE DROP]**
 >
 > ​      修改表指的是修改数据库中已经存在的**数据表的结构(不是表中的数据)。**
 
@@ -197,7 +197,7 @@ DESCRUBE 表名;
 - 删除表中的列（字段）
 - 重命名表中的列（字段）
 
-**`添加新字段`**
+#### **`添加新字段`**
 
 语法格式：ALTER TABLE 表名 **ADD** 【COLUMN】 字段名 字段类型 【FIRST|AFTER 字段名】;
 
@@ -205,7 +205,7 @@ DESCRUBE 表名;
 ALTER TABLE dept80 ADD job_id varchar(15);
 ```
 
-**`修改字段`**
+#### **`修改字段`**
 
 可以修改字段的数据类型，长度、默认值和位置
 
@@ -217,7 +217,7 @@ ALTER TABLE dept80 MODIFY last_name VARCHAR(30);
 ALTER TABLE dept80 MODIFY salary double(9,2) default 1000;
 ```
 
-**`重命名字段`**
+#### **`重命名字段`**
 
 语法格式：ALTER TABLE 表名 **CHANGE** 【column】 **字段名 新字段名 新数据类型;**
 
@@ -225,7 +225,7 @@ ALTER TABLE dept80 MODIFY salary double(9,2) default 1000;
 ALTER TABLE dept80 CHANGE department_name dept_name varchar(15);
 ```
 
-**`删除字段`**
+#### **`删除字段`**
 
 语法格式：ALTER TABLE 表名 **DROP** [column] 字段名;
 
@@ -1143,3 +1143,485 @@ AS province, js -> '$.address.city' AS city
 - 【 强制 】**小数类型为 DECIMAL，禁止使用 FLOAT 和 DOUBLE**。说明：在存储的时候，FLOAT 和 DOUBLE 都存在精度损失的问题，很可能在比较值的时候，得到不正确的结果。**如果存储的数据范围超过 DECIMAL 的范围，建议将数据拆成整数和小数并分开存储。**
 - 【 强制 】**如果存储的字符串长度几乎相等，使用 CHAR 定长字符串类型。**
 - 【 强制 】**VARCHAR 是可变长字符串，不预先分配存储空间，长度不要超过 5000**。**如果存储长度大于此值，定义字段类型为 TEXT，独立出来一张表，用主键来对应，避免影响其它字段索引效率。**
+
+# 第十三章、约束
+
+## 1.约束（constraint）概述
+
+### 1.1 为什么需要约束
+
+数据完整性（Data Integrity）是指数据的精确性（Accuracy）和可靠性（Reliability）。它是**`防止数据库中存在不符合语义规定的数据和防止因错误信息的输入输出造成无效操作或错误信息而提出的`**。【**数据完整性，以及防止储存的数据不符合语义以及错误的数据**】
+
+为了保证数据的完整性，SQL规范以约束的方式对表数据进行额外的条件限制。从以下四个方面考虑：
+
+- **`实体完整性（Entity Integrity）`** ：例如，同一个表中，不能存在两条完全相同无法区分的记录
+- **`域完整性（Domain Integrity）`** ：例如：年龄范围0-120，性别范围“男/女”
+- **`引用完整性（Referential Integrity）`** ：例如：员工所在部门，在部门表中要能找到这个部门
+- **`用户自定义完整性（User-defined Integrity）`** ：例如：用户名唯一、密码不能为空等，本部门经理的工资不得高于本部门职工的平均工资的5倍。
+
+### 1.2 什么是约束
+
+约束是表级的强制规定。可以**在创建表时规定约束（通过 CREATE TABLE 语句）**，或者在**表创建之后通过 ALTER TABLE 语句规定约束**。
+
+### 1.3 约束的分类
+
+- 根据**约束数据列的限制**，约束可分为：
+  - **单列约束**：每个约束只约束一列
+  - **多列约束**：每个约束可约束多列数据
+- 根据**约束的作用范围**，约束可分为：
+  - **列级约束**：只能作用在一个列上，跟在列的定义后面
+  - **表级约束**：可以作用在多个列上，不与列一起，而是单独定义
+
+![1675256780698de0444a285ca5291.png](https://img.picgo.net/2023/02/01/1675256780698de0444a285ca5291.png)
+
+- 根据**约束起的作用**，约束可分为：
+  - **NOT NULL 非空约束，规定某个字段不能为空**
+  - **UNIQUE 唯一约束，规定某个字段在整个表中是唯一的**
+  - **PRIMARY KEY 主键(非空且唯一)约束**
+  - **FOREIGN KEY 外键约束**
+  - **CHECK 检查约束**
+  - **DEFAULT 默认值约束**
+
+【注意】： MySQL不支持check约束，但可以使用check约束，而没有任何效果
+
+### 1.4 查看某个表已有的约束
+
+```sql
+#information_schema数据库名（系统库）
+#table_constraints表名称（专门存储各个表的约束）
+SELECT * FROM information_schema.table_constraints WHERE table_name = '表名称';
+```
+
+## 2.非空约束（NOT NULL）
+
+> **关键字：NOT NULL** 
+>
+> **作用：限定某个字段/某列的值不允许为空**
+>
+> **特点：**
+>
+>  - 默认，所有的类型的值都可以是NULL，包括INT、FLOAT等数据类型
+>  - **非空约束只能出现在表对象的列上**，**只能某个列单独限定非空，不能组合非空**
+>  - 一个表可以有很多列都分别限定了非空
+>  - **空字符串 ''不等于NULL， 0 也不等于NUL**
+
+### **`添加非空约束`**
+
+(1) **在建表时**
+
+```sql
+CREATE TABLE 表名称(
+  字段名 数据类型,
+  字段名 数据类型 NOT NULL,
+  字段名 数据类型 NOT NULL
+);
+
+CREATE TABLE student(
+  sid int,
+  sname varchar(20) not null,
+  tel char(11) ,
+  cardid char(18) not null
+);
+
+insert into student values(1,'张三','13710011002','110222198912032545'); #成功
+insert into student values(2,'李四','13710011002',null);#身份证号为空
+ERROR 1048 (23000): Column 'cardid' cannot be null
+insert into student values(2,'李四',null,'110222198912032546');#成功，tel允许为空
+insert into student values(3,null,null,'110222198912032547');#失败
+ERROR 1048 (23000): Column 'sname' cannot be null
+```
+
+（2）**修改表时**
+
+```sql
+alter table 表名称 modify 字段名 数据类型 not null;
+
+ALTER TABLE emp
+MODIFY sex VARCHAR(30) NOT NULL;
+alter table student modify sname varchar(20) not null;
+```
+
+###  **`删除非空约束`**
+
+```sql
+alter table 表名称 modify 字段名 数据类型 NULL;#去掉not null，相当于修改某个非注解字段，该字段允许为空
+或
+alter table 表名称 modify 字段名 数据类型;#去掉not null，相当于修改某个非注解字段，该字段允许为空
+```
+
+## 3.唯一性约束（UNIQUE）
+
+> **关键字：UNIQUE**
+>
+> **作用：用来限制某个字段/某列的值不能重复。**
+>
+> **特点：**
+>
+> - 同一个表可以有多个唯一约束。
+> - **唯一约束可以是某一个列的值唯一，也可以多个列组合的值唯一。**
+> - **唯一性约束允许列值为空**。
+> - **在创建唯一约束的时候，如果不给唯一约束命名，就默认和列名相同**。
+> - **MySQL会给唯一约束的列上默认创建一个唯一索引**。
+
+### `添加唯一约束`
+
+**(1)在建表时**
+
+```sql
+create table 表名称(
+  字段名 数据类型,
+  字段名 数据类型 unique,
+  字段名 数据类型 unique key,
+  字段名 数据类型
+);
+-- 或 最后添加唯一约束并命名（表级约束）
+create table 表名称(
+  字段名 数据类型,
+  字段名 数据类型,
+  字段名 数据类型,
+  [constraint 约束名] unique key(字段名)
+);
+
+create table student(
+  sid int,
+  sname varchar(20),
+  tel char(11) unique,
+  cardid char(18) unique key
+);
+```
+
+**（2）建表后**（通过修改表字段，通过修改表）
+
+```sql
+#方式1：
+alter table 表名称 add unique key(字段列表);
+#方式2：
+alter table 表名称 modify 字段名 字段类型 unique;
+
+ALTER TABLE USER
+ADD UNIQUE(NAME,PASSWORD);
+ALTER TABLE USER
+ADD CONSTRAINT uk_name_pwd UNIQUE(NAME,PASSWORD);
+ALTER TABLE USER
+MODIFY NAME VARCHAR(20) UNIQUE;
+
+create table student(
+sid int primary key,
+sname varchar(20),
+tel char(11) ,
+cardid char(18)
+);
+alter table student add unique key(tel);
+alter table student add unique key(cardid);
+```
+
+###  **复合唯一约束**
+
+> 字段列表中如果是一个字段，表示该列的值唯一。**如果是两个或更多个字段，那么复合唯一，即多个字段的组合是唯一的**
+
+```sql
+create table 表名称(
+  字段名 数据类型,
+  字段名 数据类型,
+  字段名 数据类型,
+  unique key(字段列表) #字段列表中写的是多个字段名，多个字段名用逗号分隔，表示那么是复合唯一，即多个字段的组合是唯一的
+);
+```
+
+###  删除唯一约束
+
+- 添加唯一性约束的列上也会自动创建唯一索引。
+- 删除唯一约束只能通过删除唯一索引的方式删除。
+- 删除时需要指定唯一索引名，唯一索引名就和唯一约束名一样。
+- 如果创建唯一约束时未指定名称，如果是单列，就默认和列名相同；如果是组合列，那么默认和()中排在第一个的列名相同。也可以自定义唯一性约束名。
+
+**`查看表中有哪些索引`**
+
+通过 show index from 表名称; 查看表的索引
+
+```sql
+SHOW INDEX FROM 表名
+```
+
+**`删除唯一索引`**
+
+```sql
+ALTER TABLE USER DROP INDEX uk_name_pwd;
+```
+
+## 4.主键约束（PRIMARY KEY）
+
+> **关键字：PRIMARY KEY**
+>
+> **作用：用来唯一标识表中的一行记录。**
+>
+> **特点：**
+>
+> - **主键约束相当于唯一约束+非空约束的组合**，**主键约束列不允许重复**，**也不允许出现空值**。
+> - 一个表最多只能有一个主键约束，建立主键约束可以在列级别创建，也可以在表级别上创建。
+> - 主键约束对应着表中的一列或者多列（复合主键）
+> - 如果是**多列组合的复合主键约束，那么这些列都不允许为空值，并且组合的值不允许重复。**
+> - **MySQL的主键名总是PRIMARY，就算自己命名了主键约束名也没用**。
+> - **当创建主键约束时，系统默认会在所在的列或列组合上建立对应的主键索引（**能够根据主键查询的，就根据主键查询，效率更高）。如果删除主键约束了，主键约束对应的索引就自动删除了。
+> - 需要注意的一点是，**不要修改主键字段的值。因为主键是数据记录的唯一标识，如果修改了主键的值，就有可能会破坏数据的完整性**。
+
+### 添加主键约束
+
+（1）**建表时添加**
+
+```sql
+create table 表名称(
+  字段名 数据类型 primary key, #列级模式
+  字段名 数据类型,
+  字段名 数据类型
+);
+create table 表名称(
+  字段名 数据类型,
+  字段名 数据类型,
+  字段名 数据类型,
+  [constraint 约束名] primary key(字段名) #表级模式
+);
+
+create table temp(
+  id int primary key,
+  name varchar(20)
+);
+mysql> desc temp;
++-------+-------------+------+-----+---------+-------+
+| Field | Type | Null | Key | Default | Extra |
++-------+-------------+------+-----+---------+-------+
+| id | int(11) | NO | PRI | NULL | |
+| name | varchar(20) | YES | | NULL | |
++-------+-------------+------+-----+---------+-------+
+2 rows in set (0.00 sec)
+
+#演示一个表建立两个主键约束
+create table temp(
+id int primary key,
+name varchar(20) primary key
+);
+ERROR 1068 (42000): Multiple（多重的） primary key defined（定义）
+
+#列级约束
+CREATE TABLE emp4(
+  id INT PRIMARY KEY AUTO_INCREMENT ,
+  NAME VARCHAR(20)
+);
+#表级约束
+CREATE TABLE emp5(
+  id INT NOT NULL AUTO_INCREMENT,
+  NAME VARCHAR(20),
+  pwd VARCHAR(15),
+  CONSTRAINT emp5_id_pk PRIMARY KEY(id)
+);
+```
+
+（2）**建表后添加约束**
+
+```sql
+ALTER TABLE 表名称 ADD PRIMARY KEY(字段列表); #字段列表可以是一个字段，也可以是多个字段，如果是多个字段的话，是复合主键
+
+ALTER TABLE emp5 ADD PRIMARY KEY(NAME,pwd);
+```
+
+### 复合主键
+
+```sql
+create table 表名称(
+  字段名 数据类型,
+  字段名 数据类型,
+  字段名 数据类型,
+  primary key(字段名1,字段名2) #表示字段1和字段2的组合是唯一的，也可以有更多个字段
+);
+
+CREATE TABLE emp6(
+  id INT NOT NULL,
+  NAME VARCHAR(20),
+  pwd VARCHAR(15),
+  CONSTRAINT emp7_pk PRIMARY KEY(NAME,pwd)
+);
+```
+
+### 删除主键约束
+
+```sql
+alter table 表名称 drop primary key;
+
+ALTER TABLE student DROP PRIMARY KEY;
+ALTER TABLE emp5 DROP PRIMARY KEY
+```
+
+> 说明：**删除主键约束，不需要指定主键名，因为一个表只有一个主键，**删除主键约束后，非空还存在。
+
+## 5.自增列（AUTO_INCREMENT）
+
+> **关键字：AUTO_INCREMENT**
+>
+> **作用：某个字段的值自增**
+>
+> **特点和要求**：
+>
+> ​	（1）一个**`表最多只能有一个自增长列`**
+>
+> ​	（2）当需要**产生唯一标识符或顺序值时，可设置自增长**
+>
+> ​	（3）**自增长列约束的列必须是键列（`主键列，唯一键列`）**
+>
+> ​	（4）自增约束的**列的数据类型必须是整数类型**
+>
+> ​	（5）如果**自增列指定了 0 和 null，会在当前最大值的基础上自增；如果自增列手动指定了具体值，直接赋值为具体值**。
+
+错误演示：
+
+```sql
+create table employee(
+  eid int auto_increment,
+  ename varchar(20)
+);
+# ERROR 1075 (42000): Incorrect table definition; there can be only one auto columnand it must be defined as a key
+
+create table employee(
+  eid int primary key,
+  ename varchar(20) unique key auto_increment
+);
+# ERROR 1063 (42000): Incorrect column specifier for column 'ename' 因为ename不是整数类型
+```
+
+### 指定自增约束
+
+（1）**建表时**
+
+```sql
+create table 表名称(
+  字段名 数据类型 primary key auto_increment,
+  字段名 数据类型 unique key not null,
+  字段名 数据类型 unique key,
+  字段名 数据类型 not null default 默认值,
+);
+
+create table 表名称(
+  字段名 数据类型 default 默认值 ,
+  字段名 数据类型 unique key auto_increment,
+  字段名 数据类型 not null default 默认值,,
+  primary key(字段名)
+);
+```
+
+(2)**建表后**
+
+```sql
+alter table 表名称 modify 字段名 数据类型 auto_increment;
+
+create table employee(
+  eid int primary key ,
+  ename varchar(20)
+);
+alter table employee modify eid int auto_increment;
+```
+
+### 删除自增约束
+
+```sql
+#alter table 表名称 modify 字段名 数据类型 auto_increment;#给这个字段增加自增约束
+
+alter table 表名称 modify 字段名 数据类型; #去掉auto_increment相当于删除
+```
+
+### MySQL 8.0新特性—自增变量的持久化
+
+> 在MySQL 8.0之前，自增主键AUTO_INCREMENT的值如果大于max(primary key)+1，在MySQL重启后，会重置AUTO_INCREMENT=max(primary key)+1，这种现象在某些情况下会导致业务主键冲突或者其他难以发现的问题。
+
+ 下面通过案例来对比不同的版本中自增变量是否持久化。 在**MySQL 5.7版本**中，测试步骤如下： 创建的数据表中包含自增主键的id字段，语句如下：
+
+```sql
+CREATE TABLE test1(
+	id INT PRIMARY KEY AUTO_INCREMENT
+);
+# 插入4个空值，
+INSERT INTO test1
+VALUES(0),(0),(0),(0);
+
+mysql> SELECT * FROM test1;
++----+
+| id |
++----+
+| 1 |
+| 2 |
+| 3 |
+| 4 |
++----+
+4 rows in set (0.00 sec)
+
+删除id为4的记录，
+DELETE FROM test1 WHERE id = 4;
+再次插入一个空值，
+INSERT INTO test1 VALUES(0);
+
+mysql> SELECT * FROM test1;
++----+
+| id |
++----+
+| 1 |
+| 2 |
+| 3 |
+| 5 |
++----+
+4 rows in set (0.00 sec)
+从结果可以看出，虽然删除了id为4的记录，但是再次插入空值时，并没有重用被删除的4，而是分配了
+5。 删除id为5的记录，结果如下：
+DELETE FROM test1 where id=5;
+重启数据库，重新插入一个空值。
+INSERT INTO test1 values(0);
+mysql> SELECT * FROM test1;
++----+
+| id |
++----+
+| 1 |
+| 2 |
+| 3 |
+| 4 |
++----+
+4 rows in set (0.00 sec)
+-从结果可以看出，新插入的0值分配的是4，按照重启前的操作逻辑，此处应该分配6。出现上述结果的主
+要原因是自增主键没有持久化。
+```
+
+ **在MySQL 5.7系统中，对于自增主键的分配规则，是由InnoDB数据字典内部一个 计数器 来决定的，而该计数器只在 内存中维护 ，并不会持久化到磁盘中。当数据库重启时，该计数器会被初始化。**
+
+在MySQL 8.0版本中，上述测试步骤最后一步的结果如下：
+
+```sql
+mysql> SELECT * FROM test1;
++----+
+| id |
++----+
+| 1 |
+| 2 |
+| 3 |
+| 6 |
++----+
+4 rows in set (0.00 sec)
+
+```
+
+从结果可以看出，自增变量已经持久化了。
+**MySQL 8.0将自增主键的计数器持久化到 `重做日志` 中。每次计数器发生改变，都会将其写入重做日志中。`如果数据库重启，InnoDB会根据重做日志中的信息来初始化计数器的内存值。`**
+
+## 6.外键约束（FOREIGN KEY）
+
+> **关键字：FOREIGN KEY**
+>
+> **作用：限定某个表的某个字段的引用完整性。 比如：员工表的员工所在部门的选择，必须在部门表能找到对应的部分。**
+
+### 主表和从表/父表和子表
+
+​	**主表（父表）**：被引用的表，被参考的表
+
+​	**从表（子表）**：引用别人的表，参考别人的表
+
+​	例如：员工表的员工所在部门这个字段的值要参考部门表：部门表是主表，员工表是从表。
+
+​	例如：学生表、课程表、选课表：选课表的学生和课程要分别参考学生表和课程表，学生表和课程表是主表，选课表是从表。
+
+**特点**
+
