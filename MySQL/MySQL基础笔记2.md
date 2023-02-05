@@ -1625,3 +1625,524 @@ mysql> SELECT * FROM test1;
 
 **特点**
 
+- （1）从表的外键列，必须引用/参考主表的主键或唯一约束的列为什么？因为被依赖/被参考的值必须是唯一的
+- （2）在创建外键约束时，如果不给外键约束命名，默认名不是列名，而是自动产生一个外键名（例如student_ibfk_1;），也可以指定外键约束名。
+- （3）创建(CREATE)表时就指定外键约束的话，先创建主表，再创建从表
+- （4）删表时，先删从表（或先删除外键约束），再删除主表
+- （5）当主表的记录被从表参照时，主表的记录将不允许删除，如果要删除数据，需要先删除从表中依赖该记录的数据，然后才可以删除主表的数据
+- （6）在“从表”中指定外键约束，并且一个表可以建立多个外键约束
+- （7）从表的外键列与主表被参照的列名字可以不相同，但是数据类型必须一样，逻辑意义一致。如果类型不一样，创建子表时，就会出现错误“ERROR 1005 (HY000): Can't create table'database.tablename'(errno: 150)”。
+- （8）**当创建外键约束时，系统默认会在所在的列上建立对应的普通索引。但是索引名是外键的约束名。（根据外键查询效率很高）**
+- （9）**删除外键约束后，必须 手动 删除对应的索引**
+
+### 添加外键约束
+
+（1）**在建表时**
+
+```sql
+create table 从表名称(
+  字段1 数据类型 primary key,
+  字段2 数据类型,
+  [CONSTRAINT <外键约束名称>] FOREIGN KEY（从表的某个字段) references 主表名(被参考字段)
+);
+
+create table 主表名称(
+  字段1 数据类型 primary key,
+  字段2 数据类型
+);
+
+#(从表的某个字段)的数据类型必须与主表名(被参考字段)的数据类型一致，逻辑意义也一样
+#(从表的某个字段)的字段名可以与主表名(被参考字段)的字段名一样，也可以不一样
+-- FOREIGN KEY: 在表级指定子表中的列
+-- REFERENCES: 标示在父表中的列
+
+create table dept( #主表
+  did int primary key, #部门编号
+  dname varchar(50) #部门名称
+);
+create table emp(#从表
+  eid int primary key, #员工编号
+  ename varchar(5), #员工姓名
+  deptid int, #员工所在的部门
+  foreign key (deptid) references dept(did) #在从表中指定外键约束
+  #emp表的deptid和和dept表的did的数据类型一致，意义都是表示部门的编号
+);
+说明：
+（1）主表dept必须先创建成功，然后才能创建emp表，指定外键成功。
+（2）删除表时，先删除从表emp，再删除主表dept
+
+```
+
+（2）**在建表后**
+
+一般情况下，表与表的关联都是提前设计好了的，因此，会在创建表的时候就把外键约束定义好。不过，如果需要修改表的设计（比如添加新的字段，增加新的关联关系），但没有预先定义外键约束，那
+么，就要用修改表的方式来补充定义。
+
+```sql
+# 格式
+ALTER TABLE 从表名 ADD [CONSTRAINT 约束名] FOREIGN KEY (从表的字段) REFERENCES 主表名(被引用字段) [on update xx][on delete xx];
+
+ALTER TABLE emp1
+ADD [CONSTRAINT emp_dept_id_fk] FOREIGN KEY(dept_id) REFERENCES dept(dept_id);
+
+create table dept(
+  did int primary key, #部门编号
+  dname varchar(50) #部门名称
+);
+create table emp(
+  eid int primary key, #员工编号
+  ename varchar(5), #员工姓名
+  deptid int #员工所在的部门
+);
+#这两个表创建时，没有指定外键的话，那么创建顺序是随意
+alter table emp add foreign key (deptid) references dept(did);
+```
+
+总结：约束关系是针对双方的
+	添加了外键约束后，主表的修改和删除数据受约束
+	添加了外键约束后，从表的添加和修改数据受约束
+	在从表上建立外键，要求主表必须存在
+	删除主表时，要求从表先删除，或将从表中外键引用该主表的关系先删除
+
+### 约束等级
+
+> **Cascade方式** ：在父表上update/delete记录时，同步update/delete掉子表的匹配记录
+>
+> **Set null方式** ：在父表上update/delete记录时，将子表上匹配记录的列设为null，但是要注意子表的外键列不能为not null
+>
+> **No action方式** ：如果子表中有匹配的记录，则不允许对父表对应候选键进行update/delete操作
+>
+> **Restrict方式 ：**同no action， 都是立即检查外键约束
+>
+> **Set default方式** （在可视化工具SQLyog中可能显示空白）：父表有变更时，子表将外键列设置成一个默认的值，但Innodb不能识别
+>
+> 【注】**如果没有指定等级，就相当于Restrict方式。**
+>
+> 【注】**`对于外键约束，最好是采用: ON UPDATE CASCADE ON DELETE RESTRICT 的方式。`**
+
+### 删除外键约束
+
+​	**步骤如下：**
+
+> **(1)第一步先查看约束名和删除外键约束**
+> SELECT * FROM information_schema.table_constraints WHERE table_name = '表名称';#查看某个表的约束名
+>
+> ALTER TABLE 从表名 DROP FOREIGN KEY 外键约束名;
+>
+> **（2）第二步查看索引名和删除索引。（注意，只能手动删除）**
+>
+> SHOW INDEX FROM 表名称; #查看某个表的索引名
+>
+> ALTER TABLE 从表名 DROP INDEX 索引名;
+
+```sql
+mysql> SELECT * FROM information_schema.table_constraints WHERE table_name = 'emp';
+mysql> alter table emp drop foreign key emp_ibfk_1;
+  Query OK, 0 rows affected (0.02 sec)
+  Records: 0 Duplicates: 0 Warnings: 0
+mysql> show index from emp;
+mysql> alter table emp drop index deptid;
+  Query OK, 0 rows affected (0.01 sec)
+  Records: 0 Duplicates: 0 Warnings: 0
+mysql> show index from emp;
+```
+
+### 开发场景
+
+**问题1：如果两个表之间有关系（一对一、一对多），比如：员工表和部门表（一对多），它们之间是否一定要建外键约束？**
+
+​	答：不是的
+
+**问题2：建和不建外键约束有什么区别？**
+
+​	答：建外键约束，你的操作（创建表、删除表、添加、修改、删除）会受到限制，从语法层面受到限制。例如：在员工表中不可能添加一个员工信息，它的部门的值在部门表中找不到。
+
+​	不建外键约束，你的操作（创建表、删除表、添加、修改、删除）不受限制，要保证数据的 引用完整性 ，只能依 靠程序员的自觉 ，或者是 在Java程序中进行限定 。例如：在员工表中，可以添加一个	员工的信息，它的部门指定为一个完全不存在的部门。
+
+> 在 MySQL 里，外键约束是有成本的，需要消耗系统资源。对于大并发的 SQL 操作，有可能会不适合。比如大型网站的中央数据库，可能会 因为外键约束的系统开销而变得非常慢 。所以， MySQL 允
+> 许你不使用系统自带的外键约束，在 应用层面 完成检查数据一致性的逻辑。也就是说，即使你不用外键约束，也要想办法通过应用层面的附加逻辑，来实现外键约束的功能，确保数据的一致性。
+
+### 开发规范
+
+> 【 强制 】不得使用外键与级联，一切外键概念必须在应用层解决。
+> 说明：（概念解释）学生表中的 student_id 是主键，那么成绩表中的 student_id 则为外键。如果更新学生表中的 student_id，同时触发成绩表中的 student_id 更新，即为级联更新。外键与级联更新适用于 单机低并发 ，不适合 分布式 、 高并发集群 ；级联更新是强阻塞，存在数据库 更新风暴 的风险；外键影响数据库的 插入速度 。
+
+## 7.CHECK约束
+
+> 关键字：CHECK
+>
+> 作用：检查某个字段的值是否符号xx要求，一般指的是值的范围
+>
+> 说明：
+>
+> ​	MySQL5.7 可以使用check约束，但check约束对数据验证没有任何作用。添加数据时，没有任何错误或警告
+>
+> ​	但是MySQL 8.0中可以使用check约束了。
+
+```sql
+create table employee(
+  eid int primary key,
+  ename varchar(5),
+  gender char check ('男' or '女')
+);
+
+insert into employee values(1,'张三','妖');
+```
+
+## 8.DEFAULT约束
+
+> **关键字：DEFAULT**
+>
+> **作用：给某个字段/某列指定默认值，一旦设置默认值，在插入数据时，如果此字段没有显式赋值，则赋值为默认值。**
+
+### 添加默认值
+
+（1）**在建表时**
+
+```sql
+create table 表名称(
+  字段名 数据类型 primary key,
+  字段名 数据类型 unique key not null,
+  字段名 数据类型 unique key,
+  字段名 数据类型 not null default 默认值,
+);
+create table 表名称(
+  字段名 数据类型 default 默认值 ,
+  字段名 数据类型 not null default 默认值,
+  字段名 数据类型 not null default 默认值,
+  primary key(字段名),
+  unique key(字段名)
+);
+说明：默认值约束一般不在唯一键和主键列上加
+
+```
+
+（2）**在建表后**
+
+```sql
+alter table 表名称 modify 字段名 数据类型 default 默认值;
+#如果这个字段原来有非空约束，你还保留非空约束，那么在加默认值约束时，还得保留非空约束，否则非空约束就被删除了
+
+#同理，在给某个字段加非空约束也一样，如果这个字段原来有默认值约束，你想保留，也要在modify语句中保留默认值约束，否则就删除了
+alter table 表名称 modify 字段名 数据类型 default 默认值 not null;
+
+
+create table employee(
+  eid int primary key,
+  ename varchar(20),
+  gender char,
+  tel char(11) not null
+);
+alter table employee modify gender char default '男'; #给gender字段增加默认值约束
+alter table employee modify tel char(11) default ''; #给tel字段增加默认值约束
+alter table employee modify tel char(11) default '' not null;#给tel字段增加默认值约束，并保留非空约束
+
+```
+
+### 删除默认值约束
+
+```sql
+alter table 表名称 modify 字段名 数据类型 ;#删除默认值约束，也不保留非空约束
+alter table 表名称 modify 字段名 数据类型 not null; #删除默认值约束，保留非空约束
+
+alter table employee modify gender char; #删除gender字段默认值约束，如果有非空约束，也一并删除
+alter table employee modify tel char(11) not null;#删除tel字段默认值约束，保留非空约束
+
+```
+
+# 第十四章、视图
+
+## 1.视图概述
+
+* **视图是一种 虚拟表** ，**本身是 不具有数据 的，占用很少的内存空间**，它是 SQL 中的一个重要概念。
+* **视图建立在已有表的基础上, 视图赖以建立的这些表称为基表**。
+* ![16755784136405b71dd5b4085b1e1.png](https://img.picgo.net/2023/02/05/16755784136405b71dd5b4085b1e1.png)
+
+* 视图的**创建和删除只影响视图本身，不影响对应的基表**。但是当**对视图中的数据进行增加、删除和 修改操作时，数据表中的数据会相应地发生变化，反之亦然**。
+* 视图提供数据内容的语句为 SELECT 语句, 可以将**视图理解为存储起来的 SELECT 语句**
+  * 在数据库中，**视图不会保存数据，数据真正保存在数据表中**。当对视图中的数据进行增加、删 除和修改操作时，数据表中的数据会相应地发生变化；反之亦然。
+* 视图，是向用户提供基表数据的另一种表现形式。**通常情况下，小型项目的数据库可以不使用视 图，但是在大型项目中，以及数据表比较复杂的情况下，视图的价值就凸显出来了，它可以帮助我 们把经常查询的结果集放到虚拟表中，提升使用效率。理解和使用起来都非常方便。**
+
+## 2.创建视图
+
+> **关键字：CREATE VIEW**
+>
+> **语法格式： ****在 CREATE VIEW 语句中嵌入子查询**
+>
+> ```sql
+> CREATE [OR REPLACE]
+> [ALGORITHM = {UNDEFINED | MERGE | TEMPTABLE}]
+> VIEW 视图名称 [(字段列表)]
+> AS 查询语句
+> [WITH [CASCADED|LOCAL] CHECK OPTION]
+> ```
+>
+> 精简版
+>
+> ```sql
+> CREATE VIEW 视图名称
+> AS 查询语句
+> ```
+
+### 2.1 创建单表视图
+
+```sql
+CREATE VIEW empvu80
+AS
+SELECT employee_id, last_name, salary
+FROM employees
+WHERE department_id = 80;
+
+#查看视图
+SELECT *
+FROM salvu80;
+```
+
+![1675578693983da5cb877f413674a.png](https://img.picgo.net/2023/02/05/1675578693983da5cb877f413674a.png)
+
+**说明**1：实际上就是我们在 **SQL 查询语句的基础上封装了视图 VIEW，这样就会基于 SQL 语句的结果集形成一张虚拟表。**
+**说明2**：在**创建视图时，没有在视图名后面指定字段列表，则视图中字段列表默认和SELECT语句中的字段列表一致**。**如果SELECT语句中给字段取了别名，那么视图中的字段名和别名相同。**
+
+### 2.2 创建多表联合视图
+
+```sql
+CREATE VIEW empview
+AS
+SELECT employee_id emp_id,last_name NAME,department_name
+FROM employees e,departments d
+WHERE e.department_id = d.department_id;
+
+CREATE VIEW dept_sum_vu
+(name, minsal, maxsal, avgsal)
+AS
+SELECT d.department_name, MIN(e.salary), MAX(e.salary),AVG(e.salary)
+FROM employees e, departments d
+WHERE e.department_id = d.department_id
+GROUP BY d.department_name;
+
+```
+
+**利用视图对数据格式化**
+
+```sql
+我们经常需要输出某个格式的内容，比如我们想输出员工姓名和对应的部门名，对应格式为
+emp_name(department_name)，就可以使用视图来完成数据格式化的操作：
+
+CREATE VIEW emp_depart
+AS
+SELECT CONCAT(last_name,'(',department_name,')') AS emp_dept
+FROM employees e JOIN departments d
+WHERE e.department_id = d.department_id
+
+```
+
+### 2.3 基于视图创建视图
+
+当我们创建好一张视图之后，还可以在它的基础上继续创建视图。
+
+举例：联合“emp_dept”视图和“emp_year_salary”视图查询员工姓名、部门名称、年薪信息创建“emp_dept_ysalary”视图。
+
+```sql
+CREATE VIEW emp_dept_ysalary
+AS
+SELECT emp_dept.ename,dname,year_salary
+FROM emp_dept INNER JOIN emp_year_salary
+ON emp_dept.ename = emp_year_salary.ename;
+```
+
+## 3.查看视图
+
+**语法一：查看数据库的表对象、视图对象**
+
+```sql
+SHOW TABLES;
+```
+
+**语法2：查看视图的结构**
+
+```sql
+DESC / DESCRIBE 视图名称;
+```
+
+**语法3：查看视图的属性信**
+
+```sql
+# 查看视图信息（显示数据表的存储引擎、版本、数据行数和数据大小等）
+SHOW TABLE STATUS LIKE '视图名称'\G
+执行结果显示，注释Comment为VIEW，说明该表为视图，其他的信息为NULL，说明这是一个虚表。
+```
+
+**语法4：查看视图的详细定义信息**
+
+```sql
+SHOW CREATE VIEW 视图名称;
+```
+
+## 4.更新视图数据
+
+### 4.1 一般情况
+
+> MySQL支持使用INSERT、UPDATE和DELETE语句对视图中的数据进行插入、更新和删除操作。
+>
+> 当视图中的数据发生变化时，数据表中的数据也会发生变化，反之亦然。
+
+举例：UPDATE操作
+
+```sql
+mysql> SELECT ename,tel FROM emp_tel WHERE ename = '孙洪亮';
++---------+-------------+
+| ename | tel |
++---------+-------------+
+| 孙洪亮 | 13789098765 |
++---------+-------------+
+1 row in set (0.01 sec)
+mysql> UPDATE emp_tel SET tel = '13789091234' WHERE ename = '孙洪亮';
+Query OK, 1 row affected (0.01 sec)
+Rows matched: 1 Changed: 1 Warnings: 0
+
+mysql> SELECT ename,tel FROM emp_tel WHERE ename = '孙洪亮';
++---------+-------------+
+| ename | tel |
++---------+-------------+
+| 孙洪亮 | 13789091234 |
++---------+-------------+
+1 row in set (0.00 sec)
+mysql> SELECT ename,tel FROM t_employee WHERE ename = '孙洪亮';
++---------+-------------+
+| ename | tel |
++---------+-------------+
+| 孙洪亮 | 13789091234 |
++---------+-------------+
+1 row in set (0.00 sec)
+
+```
+
+举例：DELETE操作
+
+```sql
+ysql> SELECT ename,tel FROM emp_tel WHERE ename = '孙洪亮';
++---------+-------------+
+| ename | tel |
++---------+-------------+
+| 孙洪亮 | 13789091234 |
++---------+-------------+
+1 row in set (0.00 sec)
+mysql> DELETE FROM emp_tel WHERE ename = '孙洪亮';
+Query OK, 1 row affected (0.01 sec)
+mysql> SELECT ename,tel FROM emp_tel WHERE ename = '孙洪亮';
+Empty set (0.00 sec)
+mysql> SELECT ename,tel FROM t_employee WHERE ename = '孙洪亮';
+Empty set (0.00 sec)
+
+```
+
+### 4.2 不可更新视图
+
+**要使视图可更新**，视图中**的行和底层基本表中的行之间必须存在 一对一 的关系**。另外当视图定义出现如
+下情况时，视图不支持更新操作：
+
+- 在定义**视图的时候指定了“ALGORITHM = TEMPTABLE”**，视图将不支持INSERT和DELETE操作；
+- 视图中**不包含基表中所有被定义为非空又未指定默认值的列，视图将不支持INSERT操作**；
+- 在**定义视图的SELECT语句中使用了 JOIN联合查询 ，视图将不支持INSERT和DELETE操作**；
+- 在**定义视图的SELECT语句后的字段列表中使用了 数学表达式 或 子查询 ，视图将不支持INSERT，也不支持UPDATE使用了数学表达式、子查询的字段值**；
+- 在定义视图的**SELECT语句后的字段列表中使用 DISTINCT 、 聚合函数 、 GROUP BY 、 HAVING 、UNION 等，视图将不支持INSERT、UPDATE、DELETE；**
+- 在定义**视图的SELECT语句中包含了子查询，而子查询中引用了FROM后面的表，视图将不支持INSERT、UPDATE、DELETE**；
+- 视图定义基于一个 不可更新视图 ；
+- 常量视图
+
+```sql
+mysql> CREATE OR REPLACE VIEW emp_dept
+-> (ename,salary,birthday,tel,email,hiredate,dname)
+-> AS SELECT ename,salary,birthday,tel,email,hiredate,dname
+-> FROM t_employee INNER JOIN t_department
+-> ON t_employee.did = t_department.did ;
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> INSERT INTO emp_dept(ename,salary,birthday,tel,email,hiredate,dname)
+-> VALUES('张三',15000,'1995-01-08','18201587896',
+-> 'zs@atguigu.com','2022-02-14','新部门');
+#ERROR 1393 (HY000): Can not modify more than one base table through a join view'atguigu_chapter9.emp_dept'
+```
+
+> 虽然可以更新视图数据，但总的来说，视图作为 虚拟表 ，主要用于 方便查询 ，不建议更新视图的数据。
+>
+> 对视图数据的更改，都是通过对实际数据表里数据的操作来完成的。
+
+## 6.修改和删除视图
+
+### 6.1 修改视图
+
+**方式1：使用CREATE OR REPLACE VIEW 子句修改视图**
+
+```sql
+CREATE OR REPLACE VIEW empvu80
+(id_number, name, sal, department_id)
+AS
+SELECT employee_id, first_name || ' ' || last_name, salary, department_id
+FROM employees
+WHERE department_id = 80;
+
+说明：CREATE VIEW 子句中各列的别名应和子查询中各列相对应。
+```
+
+**方式2：ALTER VIEW**
+
+```sql
+ALTER VIEW 视图名称
+AS
+查询语句
+```
+
+### 6.2 删除视图
+
+- 删除视图只是删除视图的定义，并不会删除基表的数据。
+- 删除视图的语法是：
+
+```sql
+DROP VIEW IF EXISTS 视图名称
+```
+
+说明：**基于视图a、b创建了新的视图c，如果将视图a或者视图b删除，会导致视图c的查询失败。**这样的视图c需要手动删除或修改，否则影响使用。
+
+## 7.视图优点和不足
+
+**`优点`**
+
+**1. 操作简单**
+
+将经常使用的查询操作定义为视图，可以使开发人员不需要关心视图对应的数据表的结构、表与表之间的关联关系，也不需要关心数据表之间的业务逻辑和查询条件，而只需要简单地操作视图即可，极大简化了开发人员对数据库的操作。
+
+**2. 减少数据冗余**
+
+**视图跟实际数据表不一样，它存储的是查询语句**。所以，**在使用的时候，我们要通过定义视图的查询语 句来获取结果集。而视图本身不存储数据，不占用数据存储的资源，减少了数据冗余。**
+
+**3. 数据安全**
+
+MySQL将用户对数据的 访问限制 在某些数据的结果集上，而这些数据的结果集可以使用视图来实现。用 户不必直接查询或操作数据表。这也可以理解为**视图具有 隔离性 。视图相当于在用户和实际的数据表之间加了一层虚拟表。**
+
+![16755796921267699161dccc64dfb.png](https://img.picgo.net/2023/02/05/16755796921267699161dccc64dfb.png)
+
+
+
+同时，MySQL可以根据权限将用户对数据的访问限制在某些视图上，用户不需要查询数据表，可以直接通过视图获取数据表中的信息。这在**一定程度上保障了数据表中数据的安全性。**
+
+**4. 适应灵活多变的需求**
+
+当业务系统的需求发生变化后，如果需要改动数据表的结构，则工作量相对较 大，可以使用**视图来减少改动的工作量。这种方式在实际工作中使用得比较多**。
+
+**5. 能够分解复杂的查询逻辑**
+
+**数据库中如果存在复杂的查询逻辑，则可以将问题进行分解，创建多个视图 获取数据，再将创建的多个视图结合起来，完成复杂的查询逻辑。**
+
+**`不足`**
+
+如果我们在实际数据表的基础上创建了视图，那么，如果实际数据表的结构变更了，我们就需要及时对相关的视图进行相应的维护。**特别是嵌套的视图（就是在视图的基础上创建视图），维护会变得比较复杂， 可读性不好 ，容易变成系统的潜在隐患**。**因为创建视图的 SQL 查询可能会对字段重命名，也可能包含复杂的逻辑，这些都会增加维护的成本。**
+
+实际项目中，**如果视图过多，会导致数据库维护成本的问题。**
+
+所以，在创建视图的时候，你要结合实际项目需求，综合考虑视图的优点和不足，这样才能正确使用视图，使系统整体达到最优
+
+
+
+# 第十五章、存储过程和存储函数
+
